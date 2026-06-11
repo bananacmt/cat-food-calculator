@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>貓食磷與灰質健康計算機 (熱量 kcal/kg 校正版)</title>
+    <title>貓食磷與灰質健康計算機 (終極校正版)</title>
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background-color: #f4f4f9; color: #333; line-height: 1.5; }
         .container { max-width: 550px; margin: 0 auto; background: white; padding: 25px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
@@ -21,6 +21,7 @@
         .good { background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
         .warning { background-color: #fff3cd; color: #856404; border: 1px solid #ffeeba; }
         .danger { background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        #canWeightGroup { display: none; }
     </style>
 </head>
 <body>
@@ -30,29 +31,44 @@
     
     <div class="input-group">
         <label>貓食名稱 / 口味</label>
-        <input type="text" id="name" placeholder="例如：自選乾糧">
+        <input type="text" id="name" placeholder="例如：Kakato 老貓配方">
     </div>
 
     <div class="row">
         <div class="input-group">
             <label>包裝標示：水分 (%)</label>
-            <input type="number" id="moisture" step="0.1" placeholder="乾糧約10，罐頭約80">
+            <input type="number" id="moisture" step="0.1" placeholder="例如：77">
         </div>
         <div class="input-group">
-            <label>包裝標示：熱量 (kcal / kg)</label>
-            <input type="number" id="kcal" placeholder="例如：3515">
+            <label>熱量數值</label>
+            <input type="number" id="kcalInput" placeholder="例如：92.4">
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="input-group">
+            <label>熱量單位類型</label>
+            <select id="kcalType" onchange="toggleCanWeight()">
+                <option value="kg">kcal / kg (一般乾糧標示)</option>
+                <option value="g100">kcal / 100g (部分罐頭標示)</option>
+                <option value="can">kcal / 每罐 (單罐總熱量)</option>
+            </select>
+        </div>
+        <div class="input-group" id="canWeightGroup">
+            <label>單罐淨重 (克 g)</label>
+            <input type="number" id="canWeight" placeholder="例如：70">
         </div>
     </div>
 
     <div class="input-group">
-        <label>包裝標示：磷 (%)</label>
-        <input type="number" id="phos" step="0.01" placeholder="例如：0.7">
+        <label>包裝標示：磷 (%) 或 (g/100g)</label>
+        <input type="number" id="phos" step="0.01" placeholder="例如：0.17">
     </div>
 
     <div class="row">
         <div class="input-group" style="flex: 1.5;">
-            <label>灰質數值</label>
-            <input type="number" id="ash" step="0.1" placeholder="請輸入數字">
+            <label>灰質數值 (%)</label>
+            <input type="number" id="ash" step="0.1" placeholder="例如：2">
         </div>
         <div class="input-group" style="flex: 2;">
             <label>灰質數值類型</label>
@@ -79,22 +95,50 @@
 </div>
 
 <script>
+function toggleCanWeight() {
+    var kcalType = document.getElementById('kcalType').value;
+    var canWeightGroup = document.getElementById('canWeightGroup');
+    if (kcalType === 'can') {
+        canWeightGroup.style.display = 'block';
+    } else {
+        canWeightGroup.style.display = 'none';
+    }
+}
+
 function calculateNutrition() {
     var name = document.getElementById('name').value || '未命名貓食';
     var moisture = parseFloat(document.getElementById('moisture').value);
-    var kcal = parseFloat(document.getElementById('kcal').value); 
+    var kcalInput = parseFloat(document.getElementById('kcalInput').value); 
+    var kcalType = document.getElementById('kcalType').value;
+    var canWeight = parseFloat(document.getElementById('canWeight').value);
     var phos = parseFloat(document.getElementById('phos').value);
     var ash = parseFloat(document.getElementById('ash').value);
     var ashType = document.getElementById('ashType').value;
     
-    if (isNaN(moisture) || moisture < 0 || moisture >= 100 || isNaN(kcal) || kcal <= 0 || isNaN(phos) || phos < 0) {
+    if (isNaN(moisture) || moisture < 0 || moisture >= 100 || isNaN(kcalInput) || kcalInput <= 0 || isNaN(phos) || phos < 0) {
         alert('請填寫正確的水分、熱量與磷含量數據！');
         return;
     }
 
-    // --- 精確校正後的磷含量公式 (熱量單位為 kcal/kg) ---
-    // (磷% * 100000) / (kcal/kg) = mg/100kcal
-    var mgPer100kcal = (phos * 100000) / kcal;
+    // --- 重新校正的熱量與磷換算邏輯 ---
+    var mgPer100kcal = 0;
+    
+    if (kcalType === 'kg') {
+        // 每kg卡路里公式
+        mgPer100kcal = (phos * 100000) / kcalInput;
+    } else if (kcalType === 'g100') {
+        // 每100g卡路里公式
+        mgPer100kcal = (phos * 10000) / kcalInput;
+    } else if (kcalType === 'can') {
+        if (isNaN(canWeight) || canWeight <= 0) {
+            alert('請輸入正確的單罐淨重！');
+            return;
+        }
+        // 每罐卡路里核心校正公式：(磷% * 單罐克數 * 100000) / (單罐熱量 * 100)
+        // 簡化為：(磷% * 單罐克數 * 1000) / 單罐熱量
+        mgPer100kcal = (phos * canWeight * 1000) / kcalInput;
+    }
+    
     mgPer100kcal = Math.round(mgPer100kcal * 10) / 10;
 
     // --- 灰質乾物質換算 (DM %) ---
@@ -120,12 +164,15 @@ function calculateNutrition() {
     resultBox.style.display = 'block';
 
     // --- 磷含量健康判定邏輯 ---
-    if (mgPer100kcal < 250) {
+    if (mgPer100kcal < 150) {
+        phosAdvice.className = 'status-box danger';
+        phosAdvice.innerText = '🔴 磷含量過低 (<150mg/100kcal)：低於健康貓基本生理需求！長期食用可能導致缺乏礦物質或低磷血症。';
+    } else if (mgPer100kcal <= 250) {
         phosAdvice.className = 'status-box good';
-        phosAdvice.innerText = '🟢 低磷配方 (<250mg/100kcal)：適合幼貓、成貓、老貓及慢性腎臟病 (CKD) 貓咪。';
+        phosAdvice.innerText = '🟢 優質低磷配方 (150~250mg/100kcal)：完美符合老貓、慢性腎臟病 (CKD) 貓咪控制磷攝取的安全標準。';
     } else if (mgPer100kcal <= 350) {
         phosAdvice.className = 'status-box warning';
-        phosAdvice.innerText = '🟡 中磷配方 (250~350mg/100kcal)：適合一般健康成貓。慢性腎病老貓應避免長期食用。';
+        phosAdvice.innerText = '🟡 中磷配方 (250~350mg/100kcal)：適合一般健康成貓。腎病老貓應避免長期食用。';
     } else {
         phosAdvice.className = 'status-box danger';
         phosAdvice.innerText = '🔴 高磷配方 (>350mg/100kcal)：僅適合發育中幼貓。腎功能不全或高齡貓咪切勿食用。';
